@@ -12,10 +12,10 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16 
+        image: postgres:16-alpine 
         env:
           POSTGRES_USER: admin
-          POSTGRES_PASSWORD: 123
+          POSTGRES_PASSWORD: 1234
           POSTGRES_DB: shortenerdb
         ports:
           - 5432:5432
@@ -39,4 +39,4 @@ jobs:
       env:
         SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/shortenerdb
         SPRING_DATASOURCE_USERNAME: admin
-        SPRING_DATASOURCE_PASSWORD: 123
+        SPRING_DATASOURCE_PASSWORD: 1234
