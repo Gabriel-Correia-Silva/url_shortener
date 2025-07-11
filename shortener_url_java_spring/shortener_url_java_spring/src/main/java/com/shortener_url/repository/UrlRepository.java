@@ -6,5 +6,5 @@ import com.shortener_url.entities.UrlEntity;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface UrlRepository extends MongoRepository<UrlEntity, String> {
+public interface UrlRepository extends JpaRepository<UrlEntity, String> {
 }

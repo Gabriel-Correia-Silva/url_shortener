@@ -1,8 +1,9 @@
 services:
-  mongodb:
-    image: mongo
+  postgres:
+    image: postgres
     ports:
-      - "27017:27017"
+      - "5432:5432"
     environment:
-      - MONGO_INITDB_ROOT_USERNAME=admin
-      - MONGO_INITDB_ROOT_PASSWORD=123
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=123
+      - POSTGRES_DB=shortenerdb
