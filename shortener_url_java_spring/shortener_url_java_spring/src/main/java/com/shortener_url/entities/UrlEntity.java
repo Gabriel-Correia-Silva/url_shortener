@@ -13,7 +13,6 @@ public class UrlEntity {
 
     private String fullUrl;
 
-    @Indexed(expireAfterSeconds = 0)
     private LocalDateTime expiresAt;
 
     public UrlEntity() {
