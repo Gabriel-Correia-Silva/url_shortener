@@ -1,11 +1,12 @@
 package com.shortener_url.entities;
 
-import org.springframework.data.annotation.Id;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import java.time.LocalDateTime;
-import org.springframework.data.mongodb.core.index.Indexed;
-import org.springframework.data.mongodb.core.mapping.Document;
 
-@Document(collection = "urls")
+@Entity
+@Table(name = "urls")
 public class UrlEntity {
 
     @Id
