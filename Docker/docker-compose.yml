@@ -1,9 +1,35 @@
 services:
   postgres:
-    iimage: postgres:16-alpine 
+    image: postgres:16-alpine
+    container_name: shortener_postgres
     ports:
       - "5432:5432"
     environment:
       - POSTGRES_USER=admin
       - POSTGRES_PASSWORD=1234
       - POSTGRES_DB=shortenerdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - shortener_network
+
+  app:
+    build: ./shortener_url_java_spring/shortener_url_java_spring
+    container_name: shortener_app
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/shortenerdb
+      - SPRING_DATASOURCE_USERNAME=admin
+      - SPRING_DATASOURCE_PASSWORD=1234
+    networks:
+      - shortener_network
+
+volumes:
+  postgres_data:
+
+networks:
+  shortener_network:
+    driver: bridge
