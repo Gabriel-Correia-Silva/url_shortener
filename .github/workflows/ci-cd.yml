@@ -102,11 +102,3 @@ jobs:
               -e SPRING_DATASOURCE_PASSWORD=1234 \
               "${{ env.ECR_IMAGE }}"
           EOF
-```
-
-Eu editei o Canvas com o código corrigido. Por favor, faça o seguinte:
-
-1.  Apague todo o conteúdo do seu arquivo `main.yml` local.
-2.  Copie e cole o código do Canvas.
-3.  Faça o `commit` e `push` da alteração.
-4.  Verifique a aba "Actions" no GitH
