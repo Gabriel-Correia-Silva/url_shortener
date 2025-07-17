@@ -1,12 +1,11 @@
 # Estágio 1: Build com Maven
-# Usamos uma imagem que já tem o Maven e o JDK (Java Development Kit) 21.
-FROM maven:3.9.6-eclipse-temurin-21-alpine AS builder
+# MUDANÇA: Usando a imagem oficial Amazon Corretto 21 com Maven
+FROM maven:3.9-amazoncorretto-21 AS builder
 
 # Define o diretório de trabalho dentro do contêiner
 WORKDIR /app
 
 # Copia primeiro o pom.xml para aproveitar o cache do Docker
-# Se as dependências não mudarem, o Docker não vai baixá-las de novo.
 COPY pom.xml .
 RUN mvn dependency:go-offline
 
@@ -14,7 +13,6 @@ RUN mvn dependency:go-offline
 COPY src ./src
 
 # Executa o build do Maven, que irá gerar o arquivo .jar
-# O -DskipTests pula a execução dos testes para agilizar o build no pipeline.
 RUN mvn package -DskipTests
 
 
