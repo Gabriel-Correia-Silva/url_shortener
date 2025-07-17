@@ -70,38 +70,47 @@ jobs:
 
   # --- Job para Deploy do Back-end (Exemplo para EC2) ---
   deploy-backend:
-    # Este job só roda se o build do back-end for bem-sucedido
-    needs: build-and-push-backend
-    runs-on: ubuntu-latest
-    steps:
-      - name: Setup SSH Key
-        uses: webfactory/ssh-agent@v0.5.4
-        with:
-          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+  # Este job só roda se o build do back-end for bem-sucedido
+  needs: build-and-push-backend
+  runs-on: ubuntu-latest
+  steps:
+    - name: Setup SSH Key
+      uses: webfactory/ssh-agent@v0.5.4
+      with:
+        ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
 
-      - name: Deploy to EC2
-        env:
-          # Pega a URL da imagem construída no job anterior
-          ECR_IMAGE: ${{ needs.build-and-push-backend.outputs.image }}
-        run: |
-          # Conecta-se à instância EC2 e executa os comandos de deploy
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
-            # Faz login no ECR a partir da instância EC2
-            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-            
-            # Puxa a imagem mais recente do ECR
-            docker pull "${{ env.ECR_IMAGE }}"
-            
-            # Para e remove o container antigo, se existir
-            docker stop shortener_app || true
-            docker rm shortener_app || true
-            
-            # Inicia o novo container
-            docker run -d --name shortener_app \
-              -p 8080:8080 \
-              --network host \
-              -e SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/shortenerdb \
-              -e SPRING_DATASOURCE_USERNAME=admin \
-              -e SPRING_DATASOURCE_PASSWORD=1234 \
-              "${{ env.ECR_IMAGE }}"
-          EOF
+    - name: Deploy to EC2
+      env:
+        # Pega a URL da imagem construída no job anterior
+        ECR_IMAGE: ${{ needs.build-and-push-backend.outputs.image }}
+      run: |
+        # Conecta-se à instância EC2 e executa os comandos de deploy
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          # --- INÍCIO DA MUDANÇA ---
+          # Configura as credenciais da AWS diretamente na instância EC2
+          # Isso substitui a necessidade de uma IAM Role
+          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws configure set aws_session_token ${{ secrets.AWS_SESSION_TOKEN }}
+          aws configure set region ${{ secrets.AWS_REGION }}
+          # --- FIM DA MUDANÇA ---
+
+          # Faz login no ECR a partir da instância EC2
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+          
+          # Puxa a imagem mais recente do ECR
+          docker pull "${{ env.ECR_IMAGE }}"
+          
+          # Para e remove o container antigo, se existir
+          docker stop shortener_app || true
+          docker rm shortener_app || true
+          
+          # Inicia o novo container
+          docker run -d --name shortener_app \
+            -p 8080:8080 \
+            --network host \
+            -e SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/shortenerdb \
+            -e SPRING_DATASOURCE_USERNAME=admin \
+            -e SPRING_DATASOURCE_PASSWORD=1234 \
+            "${{ env.ECR_IMAGE }}"
+        EOF
