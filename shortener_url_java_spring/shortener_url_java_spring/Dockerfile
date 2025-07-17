@@ -1,13 +1,13 @@
 # Estágio 1: Build com Maven
-# MUDANÇA: Usando a imagem oficial Amazon Corretto 21 com Maven
-FROM maven:3.9-amazoncorretto-21 AS builder
+# CORREÇÃO: Usando a imagem oficial do Maven com a base Amazon Corretto 21
+FROM maven:3-amazoncorretto-21 AS builder
 
 # Define o diretório de trabalho dentro do contêiner
 WORKDIR /app
 
 # Copia primeiro o pom.xml para aproveitar o cache do Docker
 COPY pom.xml .
-RUN mvn dependency:go-offline
+RUN mvn dependency:go-offline -B
 
 # Copia o resto do código-fonte
 COPY src ./src
@@ -17,8 +17,8 @@ RUN mvn package -DskipTests
 
 
 # Estágio 2: Imagem Final
-# Usamos uma imagem base leve, apenas com o ambiente de execução Java (JRE).
-FROM amazoncorretto:21-alpine-jre
+# CORREÇÃO: Usando a imagem oficial e leve do Amazon Corretto 21
+FROM amazoncorretto:21-alpine
 
 WORKDIR /app
 
