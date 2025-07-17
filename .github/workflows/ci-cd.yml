@@ -9,7 +9,6 @@ jobs:
   # --- Job para o Back-end ---
   build-and-push-backend:
     runs-on: ubuntu-latest
-    # Define uma saída para este job, que será a URL completa da imagem Docker
     outputs:
       image: ${{ steps.build-image.outputs.image }}
     steps:
@@ -34,13 +33,8 @@ jobs:
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_BACKEND }}
           IMAGE_TAG: latest
         run: |
-          # Constrói a imagem Docker
           docker build -t ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:$IMAGE_TAG -f shortener_url_java_spring/shortener_url_java_spring/Dockerfile ./shortener_url_java_spring/shortener_url_java_spring
-          
-          # Envia a imagem para o ECR
           docker push ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:$IMAGE_TAG
-          
-          # Define a saída para ser usada no job de deploy
           echo "image=${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
   # --- Job para o Front-end ---
@@ -68,9 +62,8 @@ jobs:
         run: |
           aws s3 sync ./front_end/dist s3://${{ secrets.S3_BUCKET_FRONTEND }} --delete
 
-  # --- Job para Deploy do Back-end (Exemplo para EC2) ---
+  # --- Job para Deploy do Back-end ---
   deploy-backend:
-    # Este job só roda se o build do back-end for bem-sucedido
     needs: build-and-push-backend
     runs-on: ubuntu-latest
     steps:
@@ -81,21 +74,16 @@ jobs:
 
       - name: Deploy to EC2
         env:
-          # Pega a URL da imagem construída no job anterior
           ECR_IMAGE: ${{ needs.build-and-push-backend.outputs.image }}
         run: |
-          # Conecta-se à instância EC2 e executa os comandos de deploy
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
-            # --- INÍCIO DA MUDANÇA ---
             # Configura as credenciais da AWS diretamente na instância EC2
-            # Isso substitui a necessidade de uma IAM Role
             aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
             aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
             aws configure set aws_session_token ${{ secrets.AWS_SESSION_TOKEN }}
             aws configure set region ${{ secrets.AWS_REGION }}
-            # --- FIM DA MUDANÇA ---
 
-            # Faz login no ECR a partir da instância EC2
+            # Faz login no ECR
             aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
             
             # Puxa a imagem mais recente do ECR
@@ -105,7 +93,7 @@ jobs:
             docker stop shortener_app || true
             docker rm shortener_app || true
             
-            # Inicia o novo container
+            # Inicia o novo container com o banco de dados PostgreSQL
             docker run -d --name shortener_app \
               -p 8080:8080 \
               --network host \
