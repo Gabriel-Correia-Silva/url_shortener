@@ -1,91 +1,104 @@
-# Nome do seu workflow, que aparecerá na aba "Actions" do GitHub
-name: Deploy Aplicacao Spring no AWS EC2
+name: CI/CD Pipeline for URL Shortener
 
-# Define quando o workflow deve ser executado
 on:
   push:
     branches:
-      - main  # Altere para a sua branch principal se for diferente (ex: master)
-
-# Variáveis de ambiente que podem ser usadas em todo o workflow
-env:
-  # ATENÇÃO: Altere estes valores para os da sua conta
-  AWS_REGION: us-east-1                  # Ex: us-east-1, sa-east-1
-  ECR_REPOSITORY: shortener-app          # O nome do seu repositório no ECR
+      - main
 
 jobs:
-  build-and-deploy:
-    name: Build e Deploy
-    runs-on: ubuntu-latest # O workflow será executado em uma máquina virtual Linux
-
+  # --- Job para o Back-end ---
+  build-and-push-backend:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.build-image.outputs.image }}
     steps:
-      # Passo 1: Baixar o código do seu repositório para a máquina virtual
-      - name: Checkout do código
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      # Passo 2: Configurar as credenciais da AWS na máquina virtual
-      # Ele usa os secrets que você configurou no repositório do GitHub
-      - name: Configurar credenciais da AWS
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }} # Essencial para contas de lab
-          aws-region: ${{ env.AWS_REGION }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-      # Passo 3: Fazer login no Amazon ECR (repositório de imagens Docker da AWS)
-      - name: Fazer login no Amazon ECR
+      - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@v1
 
-      # Passo 4: Construir a imagem Docker, taguear e enviar para o ECR
-      - name: Construir, Taguear e Enviar imagem para o ECR
+      - name: Build, tag, and push image to Amazon ECR
         id: build-image
         env:
-          # Pega o endereço do registro do passo anterior (login-ecr)
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          # Cria uma tag para a imagem usando o ID do commit (ex: 1a2b3c4)
-          IMAGE_TAG: ${{ github.sha }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_BACKEND }}
+          IMAGE_TAG: latest
         run: |
-          # Constrói a imagem Docker
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          # Envia a imagem para o ECR
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          # Salva o nome completo da imagem para usar no próximo passo
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          docker build -t ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:$IMAGE_TAG -f shortener_url_java_spring/shortener_url_java_spring/Dockerfile ./shortener_url_java_spring/shortener_url_java_spring
+          docker push ${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image=${{ steps.login-ecr.outputs.registry }}/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      # Passo 5: Conectar na instância EC2 via SSH e executar o deploy
-      - name: Deploy na Instância EC2
-        uses: appleboy/ssh-action@master
+  # --- Job para o Front-end ---
+  build-and-deploy-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          host: ${{ secrets.EC2_HOST_IP }}
-          username: ec2-user # Altere se o usuário da sua instância for outro (ex: ubuntu)
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            # --- Início do Script de Deploy na EC2 (Plano B) ---
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-            echo "=> Configurando credenciais da AWS na instância EC2..."
+      - name: Build frontend
+        run: |
+          cd front_end
+          npm install
+          npm run build
+
+      - name: Deploy to S3
+        run: |
+          aws s3 sync ./front_end/dist s3://${{ secrets.S3_BUCKET_FRONTEND }} --delete
+
+  # --- Job para Deploy do Back-end ---
+  deploy-backend:
+    needs: build-and-push-backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup SSH Key
+        uses: webfactory/ssh-agent@v0.5.4
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Deploy to EC2
+        env:
+          ECR_IMAGE: ${{ needs.build-and-push-backend.outputs.image }}
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+            # Configura as credenciais da AWS diretamente na instância EC2
             aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
             aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
             aws configure set aws_session_token ${{ secrets.AWS_SESSION_TOKEN }}
-            aws configure set region ${{ env.AWS_REGION }}
+            aws configure set region ${{ secrets.AWS_REGION }}
 
-            echo "=> Fazendo login no ECR a partir da instância EC2..."
-            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
-
-            echo "=> Baixando a nova imagem do ECR: ${{ steps.build-image.outputs.image }}"
-            docker pull ${{ steps.build-image.outputs.image }}
-
-            echo "=> Parando e removendo o container antigo, se existir..."
+            # Faz login no ECR
+            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+            
+            # Puxa a imagem mais recente do ECR
+            docker pull "${{ env.ECR_IMAGE }}"
+            
+            # Para e remove o container antigo, se existir
             docker stop shortener_app || true
             docker rm shortener_app || true
-
-            echo "=> Iniciando o novo container..."
+            
+            # Inicia o novo container com o banco de dados PostgreSQL
             docker run -d --name shortener_app \
               -p 8080:8080 \
+              --network host \
               -e SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/shortenerdb \
               -e SPRING_DATASOURCE_USERNAME=admin \
               -e SPRING_DATASOURCE_PASSWORD=1234 \
-              ${{ steps.build-image.outputs.image }}
-
-            echo "=> Deploy finalizado com sucesso!"
+              "${{ env.ECR_IMAGE }}"
+          EOF
